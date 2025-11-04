@@ -57,6 +57,29 @@ pub fn make_test_post_response(input: TestPostInput) -> TestPostResponse {
 // HTTP Handlers (Axum endpoints)
 // ───────────────────────────────
 
+// // GET request made to "/"
+// pub async fn root_handler() -> impl IntoResponse {
+//     "Welcome to the root handler!"
+// }
+
+// // GET request made to "/test-get"
+// pub async fn test_get_handler() -> impl IntoResponse {
+//     let response = TestGetResponse {
+//         status: "ok".to_string(),
+//         message: "The test get endpoint handler is working!".to_string()
+//     };
+//     Json(response)
+// }
+
+// // POST request made to "/test-post"
+// pub async fn test_post_handler(Json(payload): Json<TestPostInput>) -> impl IntoResponse {
+//     let response = TestPostResponse {
+//         received: true,
+//         echo: payload
+//     };
+//     Json(response)
+// }
+
 // GET request made to "/"
 pub async fn root_handler() -> impl IntoResponse {
     "Welcome to the root handler!"
@@ -64,18 +87,12 @@ pub async fn root_handler() -> impl IntoResponse {
 
 // GET request made to "/test-get"
 pub async fn test_get_handler() -> impl IntoResponse {
-    let response = TestGetResponse {
-        status: "ok".to_string(),
-        message: "The test get endpoint handler is working!".to_string()
-    };
+    let response = make_test_get_response();
     Json(response)
 }
 
 // POST request made to "/test-post"
 pub async fn test_post_handler(Json(payload): Json<TestPostInput>) -> impl IntoResponse {
-    let response = TestPostResponse {
-        received: true,
-        echo: payload
-    };
+    let response = make_test_post_response(payload);
     Json(response)
 }
