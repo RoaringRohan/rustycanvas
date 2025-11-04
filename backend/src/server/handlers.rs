@@ -11,30 +11,55 @@
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
-// GET request made to "/"
-pub async fn root_handler() -> impl IntoResponse {
-    "Welcome to the root handler!"
-}
+// Structs used for JSON I/O
+// ───────────────────────────────
 
 // Struct for JSON response for test-get
 #[derive(Serialize)]
 pub struct TestGetResponse {
-    status: String,
-    message: String
+    pub status: String,
+    pub message: String
 }
 
 // Struct for JSON input for test-post
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TestPostInput {
-    username: String,
-    id: u32
+    pub username: String,
+    pub id: u32
 }
 
 // Struct for JSON response for test-post
 #[derive(Serialize)]
 pub struct TestPostResponse {
-    received: bool,
-    echo: TestPostInput
+    pub received: bool,
+    pub echo: TestPostInput
+}
+
+// Logic functions (unit-testable)
+// ───────────────────────────────
+
+// Constructs the JSON response for the GET test endpoint.
+pub fn make_test_get_response() -> TestGetResponse {
+    TestGetResponse {
+        status: "ok".to_string(),
+        message: "The test get endpoint handler is working!".to_string(),
+    }
+}
+
+// Constructs the JSON response for the POST test endpoint.
+pub fn make_test_post_response(input: TestPostInput) -> TestPostResponse {
+    TestPostResponse {
+        received: true,
+        echo: input,
+    }
+}
+
+// HTTP Handlers (Axum endpoints)
+// ───────────────────────────────
+
+// GET request made to "/"
+pub async fn root_handler() -> impl IntoResponse {
+    "Welcome to the root handler!"
 }
 
 // GET request made to "/test-get"
