@@ -7,7 +7,6 @@ use backend::server::handlers::{
     make_test_post_response,
     TestPostInput,
 };
-use axum::Json;
 
 #[test]
 fn test_make_test_get_response_logic() {
