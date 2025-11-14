@@ -6,13 +6,70 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use backend::server::routes::create_router;
 use tower::util::ServiceExt; // for .oneshot()
 use serde_json::json;
+use backend::server::routes::create_router;
+use backend::server::state::init_shared_canvas;
 
+// Test for GET /canvas endpoint
+#[tokio::test]
+async fn test_canvas_endpoint_returns_full_canvas() {
+    // Initialize shared canvas state (loads data/canvas.json)
+    let shared_canvas = init_shared_canvas();
+    let app = create_router().with_state(shared_canvas);
+
+    // Create a GET request to /canvas
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/canvas")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Verify status code is 200 OK
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Read the body into bytes
+    let body_bytes = to_bytes(response.into_body(), 1_048_576)
+        .await
+        .expect("Failed to read body");
+
+    // Parse bytes into JSON
+    let json_body: serde_json::Value =
+        serde_json::from_slice(&body_bytes).expect("Body was not valid JSON");
+
+    // Validate top-level fields
+    assert_eq!(json_body["width"], 32);
+    assert_eq!(json_body["height"], 16);
+
+    // Validate pixel grid dimensions
+    let pixels = json_body["pixels"].as_array().expect("pixels is not an array");
+    assert_eq!(pixels.len(), 16, "Expected 16 rows of pixels");
+
+    for (i, row) in pixels.iter().enumerate() {
+        let row_arr = row.as_array().expect("pixel row is not an array");
+        assert_eq!(
+            row_arr.len(),
+            32,
+            "Row {} does not have 32 columns",
+            i
+        );
+    }
+
+    // Optional: Check a known pixel is "#000000"
+    assert_eq!(pixels[0][0], "#000000");
+}
+
+
+// ------------------------------------------ TEMPLATE TESTS ------------------------------------------
 #[tokio::test]
 async fn test_get_endpoint_returns_expected_json() {
-    let app = create_router();
+    let shared_canvas = init_shared_canvas();  // loads data/canvas.json
+    let app = create_router().with_state(shared_canvas);
 
     let response = app
         .oneshot(
@@ -39,7 +96,8 @@ async fn test_get_endpoint_returns_expected_json() {
 
 #[tokio::test]
 async fn test_post_endpoint_echoes_json() {
-    let app = create_router();
+    let shared_canvas = init_shared_canvas();  // loads data/canvas.json
+    let app = create_router().with_state(shared_canvas);
 
     let payload = json!({
         "username": "rohan",
@@ -67,3 +125,4 @@ async fn test_post_endpoint_echoes_json() {
     assert_eq!(json_body["echo"]["username"], "rohan");
     assert_eq!(json_body["echo"]["id"], 123);
 }
+// ------------------------------------------ TEMPLATE TESTS ------------------------------------------
