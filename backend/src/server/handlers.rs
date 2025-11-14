@@ -10,10 +10,33 @@
 
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
+use axum::extract::State;
+use crate::server::state::{SharedCanvas, CanvasState};
 
-// Structs used for JSON I/O
-// ───────────────────────────────
+// Struct for JSON response for canvas state
+#[derive(serde::Serialize)]
+pub struct CanvasResponse {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<Vec<String>>,
+}
 
+// GET /canvas → returns full canvas JSON
+pub async fn get_canvas_handler(
+    State(canvas): State<SharedCanvas>) -> Json<CanvasResponse> {
+    let canvas_read = canvas.read().await;
+
+    let response = CanvasResponse {
+        width: canvas_read.width,
+        height: canvas_read.height,
+        pixels: canvas_read.pixels.clone(),
+    };
+
+    Json(response)
+}
+
+// *******************************************************************************************************************************
+//-------------------------------- TEMPLATE CODE -------------------------------------
 // Struct for JSON response for test-get
 #[derive(Serialize)]
 pub struct TestGetResponse {
@@ -34,10 +57,9 @@ pub struct TestPostResponse {
     pub received: bool,
     pub echo: TestPostInput
 }
+//-------------------------------- TEMPLATE CODE -------------------------------------
 
-// Logic functions (unit-testable)
-// ───────────────────────────────
-
+// -------------------------------- TEMPLATE LOGIC FUNCTIONS (USED FOR UNIT TESTS) ----------------------------------
 // Constructs the JSON response for the GET test endpoint.
 pub fn make_test_get_response() -> TestGetResponse {
     TestGetResponse {
@@ -53,33 +75,9 @@ pub fn make_test_post_response(input: TestPostInput) -> TestPostResponse {
         echo: input,
     }
 }
+// -------------------------------- TEMPLATE LOGIC FUNCTIONS (USED FOR UNIT TESTS) ----------------------------------
 
-// HTTP Handlers (Axum endpoints)
-// ───────────────────────────────
-
-// // GET request made to "/"
-// pub async fn root_handler() -> impl IntoResponse {
-//     "Welcome to the root handler!"
-// }
-
-// // GET request made to "/test-get"
-// pub async fn test_get_handler() -> impl IntoResponse {
-//     let response = TestGetResponse {
-//         status: "ok".to_string(),
-//         message: "The test get endpoint handler is working!".to_string()
-//     };
-//     Json(response)
-// }
-
-// // POST request made to "/test-post"
-// pub async fn test_post_handler(Json(payload): Json<TestPostInput>) -> impl IntoResponse {
-//     let response = TestPostResponse {
-//         received: true,
-//         echo: payload
-//     };
-//     Json(response)
-// }
-
+// -------------------------------- TEMPLATE HANDLER FUNCTIONS ----------------------------------
 // GET request made to "/"
 pub async fn root_handler() -> impl IntoResponse {
     "Welcome to the root handler!"
@@ -96,3 +94,5 @@ pub async fn test_post_handler(Json(payload): Json<TestPostInput>) -> impl IntoR
     let response = make_test_post_response(payload);
     Json(response)
 }
+// -------------------------------- TEMPLATE HANDLER FUNCTIONS ----------------------------------
+// *******************************************************************************************************************************

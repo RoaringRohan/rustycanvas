@@ -18,6 +18,8 @@ use tokio::sync::RwLock;
 pub const CANVAS_FILE_PATH: &str = "data/canvas.json";
 
 // Type alias for global shared state
+// Arc is Atomic Reference Counted pointer for thread-safe shared ownership
+// RwLock allows multiple concurrent reads or exclusive write access
 pub type SharedCanvas = Arc<RwLock<CanvasState>>;
 
 // Canvas struct
