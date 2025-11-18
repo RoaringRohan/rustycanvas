@@ -8,6 +8,8 @@ use backend::server::handlers::{
     make_test_get_response,
     make_test_post_response,
     TestPostInput,
+    PixelUpdateInput,
+    apply_pixel_update
 };
 use backend::server::state::{
     create_blank_canvas,
@@ -83,6 +85,38 @@ fn test_canvas_file_exists_after_save() {
     // --- Restore original file ---
     fs::write(CANVAS_FILE_PATH, original)
         .expect("Failed to restore original canvas.json");
+}
+
+// Tests for POST /pixel endpoint dependencies
+#[test]
+fn test_apply_pixel_update_valid() {
+    let mut canvas = create_blank_canvas(4, 4);
+
+    let input = PixelUpdateInput {
+        x: 1,
+        y: 2,
+        color: "#FF00FF".to_string(),
+    };
+
+    let result = apply_pixel_update(&mut canvas, &input);
+
+    assert!(result.is_ok());
+    assert_eq!(canvas.pixels[2][1], "#FF00FF");
+}
+
+#[test]
+fn test_apply_pixel_update_out_of_bounds() {
+    let mut canvas = create_blank_canvas(4, 4);
+
+    let input = PixelUpdateInput {
+        x: 10,   // invalid
+        y: 0,
+        color: "#FFFFFF".to_string(),
+    };
+
+    let result = apply_pixel_update(&mut canvas, &input);
+
+    assert!(result.is_err());
 }
 
 // ------------------------------------------ TEMPLATE UNIT TESTS ------------------------------------------

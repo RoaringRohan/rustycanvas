@@ -9,9 +9,10 @@
 // 'impl IntoResponse' allows axum to automatically convert the return type into a proper HTTP response
 
 use axum::response::{IntoResponse, Json};
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
-use crate::server::state::{SharedCanvas, CanvasState};
+use crate::server::state::{SharedCanvas, save_canvas_to_file};
 
 // Struct for JSON response for canvas state
 #[derive(serde::Serialize)]
@@ -21,7 +22,37 @@ pub struct CanvasResponse {
     pub pixels: Vec<Vec<String>>,
 }
 
-// GET /canvas → returns full canvas JSON
+// Struct for JSON input for pixel update
+#[derive(Deserialize)]
+pub struct PixelUpdateInput {
+    pub x: u32,
+    pub y: u32,
+    pub color: String,
+}
+
+// Struct for JSON response for pixel update
+#[derive(Serialize)]
+pub struct PixelUpdateResponse {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+// Logic-only pixel update function (used for unit tests)
+pub fn apply_pixel_update(canvas: &mut crate::server::state::CanvasState, input: &crate::server::handlers::PixelUpdateInput) -> Result<(), &'static str> {
+    if input.x >= canvas.width || input.y >= canvas.height {
+        return Err("out_of_bounds");
+    }
+
+    let x = input.x as usize;
+    let y = input.y as usize;
+
+    canvas.pixels[y][x] = input.color.clone();
+    Ok(())
+}
+
+
+// GET /canvas
+// Returns full canvas JSON
 pub async fn get_canvas_handler(
     State(canvas): State<SharedCanvas>) -> Json<CanvasResponse> {
     let canvas_read = canvas.read().await;
@@ -33,6 +64,39 @@ pub async fn get_canvas_handler(
     };
 
     Json(response)
+}
+
+// POST /pixel
+// Updates a single pixel in the canvas
+pub async fn update_pixel_handler(State(canvas): State<SharedCanvas>, Json(payload): Json<PixelUpdateInput>) -> (StatusCode, Json<PixelUpdateResponse>) {
+    // Acquire a write lock since we're mutating the canvas
+    let mut canvas_write = canvas.write().await;
+
+    // Validate coordinates: x in [0, width), y in [0, height)
+    if payload.x >= canvas_write.width || payload.y >= canvas_write.height {
+        let response = PixelUpdateResponse {
+            success: false,
+            error: Some("Pixel coordinates out of bounds".to_string()),
+        };
+        return (StatusCode::BAD_REQUEST, Json(response));
+    }
+
+    // Safe to index now
+    let x = payload.x as usize;
+    let y = payload.y as usize;
+
+    // Update the pixel color
+    canvas_write.pixels[y][x] = payload.color.clone();
+
+    // Persist the updated canvas to disk
+    save_canvas_to_file(&canvas_write);
+
+    // Return success
+    let response = PixelUpdateResponse {
+        success: true,
+        error: None,
+    };
+    (StatusCode::OK, Json(response))
 }
 
 // *******************************************************************************************************************************
