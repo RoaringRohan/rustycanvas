@@ -3,7 +3,6 @@
 // Unit tests: directly testing handler function logic (not the HTTP endpoints)
 
 use std::fs;
-use serial_test::serial;
 use backend::server::handlers::{
     make_test_get_response,
     make_test_post_response,
@@ -14,9 +13,7 @@ use backend::server::handlers::{
 use backend::server::state::{
     create_blank_canvas,
     load_canvas_from_file,
-    save_canvas_to_file,
-    CanvasState,
-    CANVAS_FILE_PATH,
+    save_canvas_to_file
 };
 
 // Tests for GET /canvas endpoint dependencies
@@ -42,49 +39,39 @@ fn test_create_blank_canvas_default_color() {
 }
 
 #[test]
-#[serial]
 fn test_save_and_load_canvas() {
-    // --- Backup original file ---
-    let original = fs::read_to_string(CANVAS_FILE_PATH)
-        .expect("Failed to read original canvas.json");
-    
+    let test_filename = "unit_test_save_load.json";
+
     // Prepare test canvas
     let mut canvas = create_blank_canvas(4, 2);
     canvas.pixels[0][1] = "#FF0000".to_string(); // modify a pixel
 
-    // Save modified version
-    save_canvas_to_file(&canvas);
+    // Save modified version to temp file
+    save_canvas_to_file(&canvas, test_filename);
 
-    // Reload from file
-    let loaded = load_canvas_from_file();
+    // Reload from temp file
+    let loaded = load_canvas_from_file(test_filename);
 
     assert_eq!(loaded.width, 4);
     assert_eq!(loaded.height, 2);
     assert_eq!(loaded.pixels[0][1], "#FF0000");
 
-    // --- Restore original file ---
-    fs::write(CANVAS_FILE_PATH, original)
-        .expect("Failed to restore original canvas.json");
+    fs::remove_file(test_filename).expect("Failed to delete test file");
 }
 
 #[test]
-#[serial]
 fn test_canvas_file_exists_after_save() {
-    // --- Backup original file ---
-    let original = fs::read_to_string(CANVAS_FILE_PATH)
-        .expect("Failed to read original canvas.json");
+    let test_filename = "unit_test_exists.json";
 
     let canvas = create_blank_canvas(8, 8);
-    save_canvas_to_file(&canvas);
+    save_canvas_to_file(&canvas, test_filename);
 
     assert!(
-        fs::metadata(CANVAS_FILE_PATH).is_ok(),
+        fs::metadata(test_filename).is_ok(),
         "Canvas JSON file should exist after saving"
     );
 
-    // --- Restore original file ---
-    fs::write(CANVAS_FILE_PATH, original)
-        .expect("Failed to restore original canvas.json");
+    fs::remove_file(test_filename).expect("Failed to delete test file");
 }
 
 // Tests for POST /pixel endpoint dependencies

@@ -2,24 +2,28 @@
 
 // Integration tests: testing the actual HTTP endpoints
 
+use std::fs;
 use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use tower::util::ServiceExt; // for .oneshot()
 use serde_json::json;
-use serial_test::serial;
 use backend::server::routes::create_router;
-use backend::server::state::init_shared_canvas;
+use backend::server::state::init_app_state;
 
 // Test for GET /canvas endpoint
 // Verifies that the full canvas is returned correctly
 #[tokio::test]
-#[serial]
 async fn test_canvas_endpoint_returns_full_canvas() {
-    // Initialize shared canvas state (loads data/canvas.json)
-    let shared_canvas = init_shared_canvas();
-    let app = create_router().with_state(shared_canvas);
+    let test_filename = "test_canvas_endpoint.json";
+    
+    // Clean up beforehand just in case
+    let _ = fs::remove_file(test_filename);
+
+    // Initialize app state with test file
+    let app_state = init_app_state(test_filename);
+    let app = create_router().with_state(app_state);
 
     // Create a GET request to /canvas
     let response = app
@@ -65,15 +69,19 @@ async fn test_canvas_endpoint_returns_full_canvas() {
 
     // Optional: Check a known pixel is "#000000"
     assert_eq!(pixels[0][0], "#000000");
+
+    let _ = fs::remove_file(test_filename);
 }
 
 // Test for POST /pixel endpoint
 // Updates a pixel and verifies the update via GET /canvas
 #[tokio::test]
-#[serial]
 async fn test_post_pixel_updates_canvas() {
-    let shared_canvas = init_shared_canvas();
-    let app = create_router().with_state(shared_canvas);
+    let test_filename = "test_pixel_update.json";
+    let _ = fs::remove_file(test_filename);
+
+    let app_state = init_app_state(test_filename);
+    let app = create_router().with_state(app_state);
 
     let payload = json!({
         "x": 0,
@@ -116,14 +124,18 @@ async fn test_post_pixel_updates_canvas() {
         serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(json_canvas["pixels"][0][0], "#FF0000");
+
+    let _ = fs::remove_file(test_filename);
 }
 
 // Test for POST /pixel with out-of-bounds coordinates
 #[tokio::test]
-#[serial]
 async fn test_post_pixel_out_of_bounds() {
-    let shared_canvas = init_shared_canvas();
-    let app = create_router().with_state(shared_canvas);
+    let test_filename = "test_pixel_oob.json";
+    let _ = fs::remove_file(test_filename);
+
+    let app_state = init_app_state(test_filename);
+    let app = create_router().with_state(app_state);
 
     let payload = json!({
         "x": 999,
@@ -144,16 +156,20 @@ async fn test_post_pixel_out_of_bounds() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let _ = fs::remove_file(test_filename);
 }
 
 
 // ------------------------------------------ TEMPLATE TESTS ------------------------------------------
 
 #[tokio::test]
-#[serial]
 async fn test_get_endpoint_returns_expected_json() {
-    let shared_canvas = init_shared_canvas();
-    let app = create_router().with_state(shared_canvas);
+    let test_filename = "test_template_get.json";
+    let _ = fs::remove_file(test_filename);
+
+    let app_state = init_app_state(test_filename);
+    let app = create_router().with_state(app_state);
 
     let response = app
         .oneshot(
@@ -176,13 +192,17 @@ async fn test_get_endpoint_returns_expected_json() {
         json_body["message"],
         "The test get endpoint handler is working!"
     );
+
+    let _ = fs::remove_file(test_filename);
 }
 
 #[tokio::test]
-#[serial]
 async fn test_post_endpoint_echoes_json() {
-    let shared_canvas = init_shared_canvas();
-    let app = create_router().with_state(shared_canvas);
+    let test_filename = "test_template_post.json";
+    let _ = fs::remove_file(test_filename);
+
+    let app_state = init_app_state(test_filename);
+    let app = create_router().with_state(app_state);
 
     let payload = json!({
         "username": "rohan",
@@ -209,6 +229,8 @@ async fn test_post_endpoint_echoes_json() {
     assert_eq!(json_body["received"], true);
     assert_eq!(json_body["echo"]["username"], "rohan");
     assert_eq!(json_body["echo"]["id"], 123);
+
+    let _ = fs::remove_file(test_filename);
 }
 
 // ------------------------------------------ TEMPLATE TESTS ------------------------------------------

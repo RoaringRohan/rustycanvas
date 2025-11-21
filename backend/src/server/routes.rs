@@ -6,7 +6,7 @@
 // A route maps the HTTP request and a URL path to a specific handler function
 
 use axum::{Router, routing::{get, post}};
-use crate::server::state::SharedCanvas;
+use crate::server::state::AppState;
 use crate::server::handlers::{
     root_handler, 
     test_get_handler, 
@@ -16,7 +16,7 @@ use crate::server::handlers::{
 };
 
 // Function to create and return the router with all defined routes
-pub fn create_router() -> Router<SharedCanvas> {
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/", get(root_handler))
         .route("/test-get", get(test_get_handler))

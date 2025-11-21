@@ -12,7 +12,7 @@ use axum::response::{IntoResponse, Json};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
-use crate::server::state::{SharedCanvas, save_canvas_to_file};
+use crate::server::state::{AppState, save_canvas_to_file};
 
 // Struct for JSON response for canvas state
 #[derive(serde::Serialize)]
@@ -53,9 +53,8 @@ pub fn apply_pixel_update(canvas: &mut crate::server::state::CanvasState, input:
 
 // GET /canvas
 // Returns full canvas JSON
-pub async fn get_canvas_handler(
-    State(canvas): State<SharedCanvas>) -> Json<CanvasResponse> {
-    let canvas_read = canvas.read().await;
+pub async fn get_canvas_handler(State(app_state): State<AppState>) -> Json<CanvasResponse> {
+    let canvas_read = app_state.canvas.read().await;
 
     let response = CanvasResponse {
         width: canvas_read.width,
@@ -68,9 +67,11 @@ pub async fn get_canvas_handler(
 
 // POST /pixel
 // Updates a single pixel in the canvas
-pub async fn update_pixel_handler(State(canvas): State<SharedCanvas>, Json(payload): Json<PixelUpdateInput>) -> (StatusCode, Json<PixelUpdateResponse>) {
+pub async fn update_pixel_handler(State(app_state): State<AppState>, Json(payload): Json<PixelUpdateInput>) -> (StatusCode, Json<PixelUpdateResponse>) {
+    
+    // Access the canvas via app_state.canvas
     // Acquire a write lock since we're mutating the canvas
-    let mut canvas_write = canvas.write().await;
+    let mut canvas_write = app_state.canvas.write().await;
 
     // Validate coordinates: x in [0, width), y in [0, height)
     if payload.x >= canvas_write.width || payload.y >= canvas_write.height {
@@ -88,8 +89,8 @@ pub async fn update_pixel_handler(State(canvas): State<SharedCanvas>, Json(paylo
     // Update the pixel color
     canvas_write.pixels[y][x] = payload.color.clone();
 
-    // Persist the updated canvas to disk
-    save_canvas_to_file(&canvas_write);
+    // We use the path stored in AppState.
+    save_canvas_to_file(&canvas_write, &app_state.file_path);
 
     // Return success
     let response = PixelUpdateResponse {
