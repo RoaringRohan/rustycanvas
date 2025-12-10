@@ -8,9 +8,6 @@
 use axum::{Router, routing::{get, post}};
 use crate::server::state::AppState;
 use crate::server::handlers::{
-    root_handler, 
-    test_get_handler, 
-    test_post_handler,
     get_canvas_handler,
     update_pixel_handler,
 };
@@ -18,9 +15,6 @@ use crate::server::handlers::{
 // Function to create and return the router with all defined routes
 pub fn create_router() -> Router<AppState> {
     Router::new()
-        .route("/", get(root_handler))
-        .route("/test-get", get(test_get_handler))
-        .route("/test-post", post(test_post_handler))
         .route("/canvas", get(get_canvas_handler))
         .route("/pixel", post(update_pixel_handler))
 }

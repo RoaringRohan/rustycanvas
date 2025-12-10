@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Json};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use axum::extract::State;
-use crate::server::state::{AppState, CanvasState, save_canvas_to_file}; 
+use crate::server::state::{AppState, CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_COLOR}; 
 
 // Struct for JSON response for canvas state
 #[derive(serde::Serialize)]
@@ -42,28 +42,56 @@ pub struct PixelUpdateResponse {
 }
 
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
-// These functions contain the "Business Logic". 
-// They do NOT know about HTTP, Axum, or Files. They just calculate data.
+// These functions contain the "Business Logic"
 
-// Logic to transform internal state into the public response struct
-pub fn make_canvas_response(canvas: &CanvasState) -> CanvasResponse {
+// Helper to generate a standardized key for the DB, e.g., "5:10"
+fn make_key(x: u32, y: u32) -> String {
+    format!("{}:{}", x, y)
+}
+
+// Logic to reconstruct the full 2D array from the Key-Value store
+pub fn make_canvas_response(db: &sled::Db) -> CanvasResponse {
+    let mut pixels = Vec::new();
+
+    for y in 0..CANVAS_HEIGHT {
+        let mut row = Vec::new();
+        for x in 0..CANVAS_WIDTH {
+            let key = make_key(x, y);
+            
+            // Try to get the pixel from DB. If not found, use DEFAULT_COLOR.
+            let color = match db.get(&key) {
+                Ok(Some(ivec)) => {
+                    // Convert binary data back to String
+                    String::from_utf8(ivec.to_vec()).unwrap_or(DEFAULT_COLOR.to_string())
+                },
+                _ => DEFAULT_COLOR.to_string(), // Default if key missing or error
+            };
+            row.push(color);
+        }
+        pixels.push(row);
+    }
+
     CanvasResponse {
-        width: canvas.width,
-        height: canvas.height,
-        pixels: canvas.pixels.clone(),
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+        pixels,
     }
 }
 
-// Logic to validate and apply a pixel update
-pub fn apply_pixel_update(canvas: &mut CanvasState, input: &PixelUpdateInput) -> Result<(), &'static str> {
-    if input.x >= canvas.width || input.y >= canvas.height {
+// Logic to update a single key-value pair in the DB
+pub fn apply_pixel_update(db: &sled::Db, input: &PixelUpdateInput) -> Result<(), &'static str> {
+    if input.x >= CANVAS_WIDTH || input.y >= CANVAS_HEIGHT {
         return Err("out_of_bounds");
     }
 
-    let x = input.x as usize;
-    let y = input.y as usize;
+    let key = make_key(input.x, input.y);
+    
+    // Sled stores bytes, convert the hex string to bytes
+    db.insert(&key, input.color.as_bytes())
+        .map_err(|_| "db_write_error")?;
 
-    canvas.pixels[y][x] = input.color.clone();
+    db.flush().map_err(|_| "db_flush_error")?;
+
     Ok(())
 }
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
@@ -78,28 +106,16 @@ pub fn apply_pixel_update(canvas: &mut CanvasState, input: &PixelUpdateInput) ->
 
 // GET /canvas
 pub async fn get_canvas_handler(State(app_state): State<AppState>) -> Json<CanvasResponse> {
-    let canvas_read = app_state.canvas.read().await;
-    
     // Using logic function
-    let response = make_canvas_response(&canvas_read);
+    let response = make_canvas_response(&app_state.db);
 
     Json(response)
 }
 
 // POST /pixel
-pub async fn update_pixel_handler(
-    State(app_state): State<AppState>, 
-    Json(payload): Json<PixelUpdateInput>
-) -> (StatusCode, Json<PixelUpdateResponse>) {
-    
-    let mut canvas_write = app_state.canvas.write().await;
-
-    // Using logic function
-    match apply_pixel_update(&mut canvas_write, &payload) {
+pub async fn update_pixel_handler(State(app_state): State<AppState>, Json(payload): Json<PixelUpdateInput>) -> (StatusCode, Json<PixelUpdateResponse>) {
+    match apply_pixel_update(&app_state.db, &payload) {
         Ok(_) => {
-            // If logic succeeded, we handle the side effect (saving)
-            save_canvas_to_file(&canvas_write, &app_state.file_path);
-
             let response = PixelUpdateResponse {
                 success: true,
                 error: None,
@@ -107,65 +123,12 @@ pub async fn update_pixel_handler(
             (StatusCode::OK, Json(response))
         },
         Err(err_msg) => {
-            // If logic failed (e.g. out of bounds), we format the error for HTTP
             let response = PixelUpdateResponse {
                 success: false,
-                error: Some(err_msg.to_string()), // Convert "out_of_bounds" to string
+                error: Some(err_msg.to_string()),
             };
-            // We map the error to a 400 Bad Request
             (StatusCode::BAD_REQUEST, Json(response))
         }
     }
 }
 // -------------------------------- HANDLER FUNCTIONS ----------------------------------
-
-
-// *******************************************************************************************************************************
-//-------------------------------- TEMPLATE CODE -------------------------------------
-// Used just to illustrate our structure, you can test around with this endpoints, they don't affect the canvas logic
-#[derive(Serialize)]
-pub struct TestGetResponse {
-    pub status: String,
-    pub message: String
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TestPostInput {
-    pub username: String,
-    pub id: u32
-}
-
-#[derive(Serialize)]
-pub struct TestPostResponse {
-    pub received: bool,
-    pub echo: TestPostInput
-}
-
-pub fn make_test_get_response() -> TestGetResponse {
-    TestGetResponse {
-        status: "ok".to_string(),
-        message: "The test get endpoint handler is working!".to_string(),
-    }
-}
-
-pub fn make_test_post_response(input: TestPostInput) -> TestPostResponse {
-    TestPostResponse {
-        received: true,
-        echo: input,
-    }
-}
-
-pub async fn root_handler() -> impl IntoResponse {
-    "Welcome to the root handler!"
-}
-
-pub async fn test_get_handler() -> impl IntoResponse {
-    let response = make_test_get_response();
-    Json(response)
-}
-
-pub async fn test_post_handler(Json(payload): Json<TestPostInput>) -> impl IntoResponse {
-    let response = make_test_post_response(payload);
-    Json(response)
-}
-// *******************************************************************************************************************************

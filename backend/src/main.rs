@@ -7,7 +7,7 @@ mod server;
 
 #[tokio::main]
 async fn main() {
-    let app_state = init_app_state("data/canvas.json");
+    let app_state = init_app_state("data/canvas_db");
 
     let app = server::routes::create_router()
         .with_state(app_state);
