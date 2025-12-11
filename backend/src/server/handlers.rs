@@ -41,6 +41,13 @@ pub struct PixelUpdateResponse {
     pub error: Option<String>,
 }
 
+// Struct for clearing canvas response
+#[derive(Serialize)]
+pub struct ClearCanvasResponse {
+    pub success: bool,
+    pub message: String,
+}
+
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
 // These functions contain the "Business Logic"
 
@@ -94,6 +101,17 @@ pub fn apply_pixel_update(db: &sled::Db, input: &PixelUpdateInput) -> Result<(),
 
     Ok(())
 }
+
+// Logic to reset the canvas (clear the DB)
+pub fn reset_canvas_db(db: &sled::Db) -> Result<(), &'static str> {
+    // Sled's clear() removes all items from the Tree
+    db.clear().map_err(|_| "db_clear_error")?;
+    
+    // Ensure the change is written to disk
+    db.flush().map_err(|_| "db_flush_error")?;
+    
+    Ok(())
+}
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
 
 
@@ -128,6 +146,26 @@ pub async fn update_pixel_handler(State(app_state): State<AppState>, Json(payloa
                 error: Some(err_msg.to_string()),
             };
             (StatusCode::BAD_REQUEST, Json(response))
+        }
+    }
+}
+
+// POST /reset
+pub async fn reset_canvas_handler(State(app_state): State<AppState>) -> (StatusCode, Json<ClearCanvasResponse>) {
+    match reset_canvas_db(&app_state.db) {
+        Ok(_) => {
+            let response = ClearCanvasResponse {
+                success: true,
+                message: "Canvas reset successfully".to_string(),
+            };
+            (StatusCode::OK, Json(response))
+        },
+        Err(err_msg) => {
+            let response = ClearCanvasResponse {
+                success: false,
+                message: err_msg.to_string(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
         }
     }
 }

@@ -6,7 +6,8 @@ use std::fs;
 use backend::server::handlers::{
     make_canvas_response,
     PixelUpdateInput,
-    apply_pixel_update
+    apply_pixel_update,
+    reset_canvas_db
 };
 use backend::server::state::{
     CANVAS_WIDTH,
@@ -39,6 +40,7 @@ fn test_default_canvas_values() {
     let _ = fs::remove_dir_all(path);
 }
 
+// Tests for GET /canvas endpoint dependencies
 #[test]
 fn test_persistence_across_restarts() {
     let path = "unit_test_persistence";
@@ -85,6 +87,7 @@ fn test_apply_pixel_update_valid() {
     let _ = fs::remove_dir_all(path);
 }
 
+// Tests for POST /pixel endpoint dependencies
 #[test]
 fn test_apply_pixel_update_out_of_bounds() {
     let path = "unit_test_apply_oob";
@@ -99,5 +102,34 @@ fn test_apply_pixel_update_out_of_bounds() {
     let result = apply_pixel_update(&db, &input);
 
     assert!(result.is_err());
+    let _ = fs::remove_dir_all(path);
+}
+
+// Tests for POST /reset endpoint dependencies
+#[test]
+fn test_reset_canvas_logic() {
+    let path = "unit_test_reset_logic";
+    let db = setup_test_db(path);
+
+    // Paint a pixel manually
+    let input = PixelUpdateInput {
+        x: 10,
+        y: 10,
+        color: "#FFFFFF".to_string(),
+    };
+    apply_pixel_update(&db, &input).unwrap();
+
+    // Verify it's painted
+    let response_before = make_canvas_response(&db);
+    assert_eq!(response_before.pixels[10][10], "#FFFFFF");
+
+    // Call Reset
+    let result = reset_canvas_db(&db);
+    assert!(result.is_ok());
+
+    // Verify it's back to default (Black)
+    let response_after = make_canvas_response(&db);
+    assert_eq!(response_after.pixels[10][10], DEFAULT_COLOR);
+
     let _ = fs::remove_dir_all(path);
 }

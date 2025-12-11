@@ -125,3 +125,58 @@ async fn test_post_pixel_out_of_bounds() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let _ = fs::remove_dir_all(test_db_path);
 }
+
+// Test for POST /reset endpoint
+#[tokio::test]
+async fn test_reset_endpoint() {
+    let test_db_path = "test_db_reset_endpoint";
+    let _ = fs::remove_dir_all(test_db_path);
+
+    let app_state = init_app_state(test_db_path);
+    let app = create_router().with_state(app_state);
+
+    // Paint a pixel (Red)
+    let pixel_payload = json!({
+        "x": 5,
+        "y": 5,
+        "color": "#FF0000"
+    });
+    
+    // We reuse the app clone for the first request
+    let _ = app.clone().oneshot(
+        Request::builder()
+            .uri("/pixel")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from(pixel_payload.to_string()))
+            .unwrap(),
+    ).await.unwrap();
+
+    // Call /reset
+    let response = app.clone().oneshot(
+        Request::builder()
+            .uri("/reset")
+            .method("POST")
+            .body(Body::empty())
+            .unwrap(),
+    ).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify Canvas is Black
+    let response_canvas = app.oneshot(
+        Request::builder()
+            .uri("/canvas")
+            .method("GET")
+            .body(Body::empty())
+            .unwrap(),
+    ).await.unwrap();
+
+    let body_bytes = to_bytes(response_canvas.into_body(), 1_048_576).await.unwrap();
+    let json_canvas: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    // Pixel [5][5] should be default color (usually #000000), NOT #FF0000
+    assert_ne!(json_canvas["pixels"][5][5], "#FF0000"); 
+
+    let _ = fs::remove_dir_all(test_db_path);
+}
