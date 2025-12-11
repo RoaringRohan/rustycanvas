@@ -7,12 +7,16 @@ use backend::server::handlers::{
     make_canvas_response,
     PixelUpdateInput,
     apply_pixel_update,
-    reset_canvas_db
+    reset_canvas_db,
+    log_pixel_update,
+    fetch_updates_since
 };
 use backend::server::state::{
+    init_app_state,
     CANVAS_WIDTH,
     CANVAS_HEIGHT,
-    DEFAULT_COLOR
+    DEFAULT_COLOR,
+    PixelUpdate
 };
 
 // Test helper to create a db
@@ -130,6 +134,106 @@ fn test_reset_canvas_logic() {
     // Verify it's back to default (Black)
     let response_after = make_canvas_response(&db);
     assert_eq!(response_after.pixels[10][10], DEFAULT_COLOR);
+
+    let _ = fs::remove_dir_all(path);
+}
+
+// Tests for GET /updates endpoint dependencies
+#[test]
+fn test_log_pixel_update_adds_to_history() {
+    let path = "unit_test_log_update";
+    let _ = fs::remove_dir_all(path);
+    let app_state = init_app_state(path);
+
+    log_pixel_update(&app_state, 10, 10, "#FFFFFF".to_string());
+
+    let history = app_state.history.read().unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].color, "#FFFFFF");
+
+    let _ = fs::remove_dir_all(path);
+}
+
+// Tests for GET /updates endpoint dependencies
+#[test]
+fn test_history_pruning_limit() {
+    let path = "unit_test_pruning";
+    let _ = fs::remove_dir_all(path);
+    let app_state = init_app_state(path);
+
+    let color = "#000000".to_string();
+
+    // Fill exactly to limit
+    for _ in 0..50 {
+        log_pixel_update(&app_state, 0, 0, color.clone());
+    }
+
+    // Read lock to verify length
+    {
+        let history = app_state.history.read().unwrap();
+        assert_eq!(history.len(), 50);
+    }
+
+    // Add one more to trigger prune
+    log_pixel_update(&app_state, 99, 99, "#UNIQUE".to_string());
+
+    let history = app_state.history.read().unwrap();
+    
+    // Length should stay at 50
+    assert_eq!(history.len(), 50);
+    
+    // The LAST item should be our new color
+    assert_eq!(history.back().unwrap().color, "#UNIQUE");
+
+    let _ = fs::remove_dir_all(path);
+}
+
+// Tests for GET /updates endpoint dependencies
+#[test]
+fn test_reset_required_logic() {
+    let path = "unit_test_reset_req_logic";
+    let _ = fs::remove_dir_all(path);
+    let app_state = init_app_state(path);
+
+    // Scenario 1: Buffer is NOT full. Client asks for very old time.
+    // Should return updates, NO reset.
+    {
+        let mut history = app_state.history.write().unwrap();
+        history.push_back(PixelUpdate { x:0, y:0, color:"#A".to_string(), timestamp: 50 });
+    }
+    
+    let (_, reset) = fetch_updates_since(&app_state, 1000);
+    assert_eq!(reset, false, "Should not reset if buffer is not full");
+
+    // Scenario 2: Buffer IS full. Client asks for time older than oldest record.
+    // Should trigger RESET.
+    {
+        let mut history = app_state.history.write().unwrap();
+        history.clear();
+        // Simulate full buffer [3000, 3001, ... 4999]
+        for i in 0..50 {
+            history.push_back(PixelUpdate { 
+                x:0, y:0, color:"#A".to_string(), 
+                timestamp: 3000 + i as u64 
+            });
+        }
+    }
+
+    // Verify manually that length is correct before testing logic
+    {
+        let history = app_state.history.read().unwrap();
+        assert_eq!(history.len(), 50);
+        assert_eq!(history.front().unwrap().timestamp, 3000);
+    }
+
+    let (_, reset) = fetch_updates_since(&app_state, 1000); // Client asks for T=1000
+    // Oldest record is 3000. Buffer is full (50). Client (1000) is older than 3000.
+    assert_eq!(reset, true, "Should reset if buffer is full and client is old");
+
+    // Scenario 3: Buffer IS full. Client asks for recent time.
+    let (updates, reset) = fetch_updates_since(&app_state, 4990);
+    assert_eq!(reset, false, "Should not reset if client is recent");
+    assert!(updates.len() > 0);
 
     let _ = fs::remove_dir_all(path);
 }

@@ -15,8 +15,9 @@
 use axum::response::{IntoResponse, Json};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use axum::extract::State;
-use crate::server::state::{AppState, CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_COLOR}; 
+use axum::extract::{State, Query};
+use crate::server::state::{AppState, CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_COLOR, PixelUpdate};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Struct for JSON response for canvas state
 #[derive(serde::Serialize)]
@@ -46,6 +47,19 @@ pub struct PixelUpdateResponse {
 pub struct ClearCanvasResponse {
     pub success: bool,
     pub message: String,
+}
+
+// Struct for getting updates since a timestamp
+#[derive(Deserialize)]
+pub struct GetUpdatesInput {
+    pub since: u64, // Client sends the timestamp since they last synced
+}
+
+// Struct for updates response
+#[derive(Serialize)]
+pub struct UpdatesResponse {
+    pub updates: Vec<PixelUpdate>,
+    pub reset_required: bool, // Tell client if they are too far behind
 }
 
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
@@ -112,6 +126,47 @@ pub fn reset_canvas_db(db: &sled::Db) -> Result<(), &'static str> {
     
     Ok(())
 }
+
+// Logic to log a pixel update into history
+pub fn log_pixel_update(state: &AppState, x: u32, y: u32, color: String) {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let update = PixelUpdate { x, y, color, timestamp };
+
+    if let Ok(mut history) = state.history.write() {
+        history.push_back(update);
+        if history.len() > 50 {
+            history.pop_front();
+        }
+    }
+}
+
+// Logic to fetch updates since a given timestamp
+pub fn fetch_updates_since(state: &AppState, since: u64) -> (Vec<PixelUpdate>, bool) {
+    let history = state.history.read().unwrap();
+    let mut updates = Vec::new();
+    let mut reset_required = false;
+
+    if let Some(first) = history.front() {
+        // Only trigger reset if the buffer is full AND client is too old
+        let buffer_limit_reached = history.len() >= 50;
+        
+        if buffer_limit_reached && since < first.timestamp {
+             reset_required = true;
+        } else {
+             for item in history.iter() {
+                if item.timestamp > since {
+                    updates.push(item.clone());
+                }
+            }
+        }
+    }
+    
+    (updates, reset_required)
+}
 // -------------------------------- LOGIC FUNCTIONS ----------------------------------
 
 
@@ -134,6 +189,10 @@ pub async fn get_canvas_handler(State(app_state): State<AppState>) -> Json<Canva
 pub async fn update_pixel_handler(State(app_state): State<AppState>, Json(payload): Json<PixelUpdateInput>) -> (StatusCode, Json<PixelUpdateResponse>) {
     match apply_pixel_update(&app_state.db, &payload) {
         Ok(_) => {
+            // Log the update in history
+            log_pixel_update(&app_state, payload.x, payload.y, payload.color);
+            
+            // Return Success Response
             let response = PixelUpdateResponse {
                 success: true,
                 error: None,
@@ -168,5 +227,15 @@ pub async fn reset_canvas_handler(State(app_state): State<AppState>) -> (StatusC
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response))
         }
     }
+}
+
+// GET /updates?since=123456789
+pub async fn get_updates_handler(State(app_state): State<AppState>, Query(params): Query<GetUpdatesInput>) -> Json<UpdatesResponse> {
+    let (updates, reset_required) = fetch_updates_since(&app_state, params.since);
+
+    Json(UpdatesResponse {
+        updates,
+        reset_required,
+    })
 }
 // -------------------------------- HANDLER FUNCTIONS ----------------------------------

@@ -180,3 +180,52 @@ async fn test_reset_endpoint() {
 
     let _ = fs::remove_dir_all(test_db_path);
 }
+
+// Test for GET /updates endpoint
+#[tokio::test]
+async fn test_updates_endpoint() {
+    let test_db_path = "test_db_updates";
+    let _ = fs::remove_dir_all(test_db_path);
+
+    let app_state = init_app_state(test_db_path);
+    let app = create_router().with_state(app_state);
+
+    // Get time slightly before now (1 sec ago) (simulating a client that just synced 1 sec ago)
+    let start_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64 - 1000;
+
+    // Make a pixel update
+    let payload = json!({ "x": 10, "y": 10, "color": "#ABCDEF" });
+    let _ = app.clone().oneshot(
+        Request::builder()
+            .uri("/pixel")
+            .method("POST")
+            .header("Content-Type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap(),
+    ).await.unwrap();
+
+    // Poll /updates?since=start_time
+    let uri = format!("/updates?since={}", start_time);
+    let response = app.oneshot(
+        Request::builder()
+            .uri(&uri)
+            .method("GET")
+            .body(Body::empty())
+            .unwrap(),
+    ).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = to_bytes(response.into_body(), 1_048_576).await.unwrap();
+    let json_body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    // Verify we got the update
+    assert_eq!(json_body["updates"].as_array().unwrap().len(), 1);
+    assert_eq!(json_body["updates"][0]["color"], "#ABCDEF");
+    assert_eq!(json_body["reset_required"], false);
+
+    let _ = fs::remove_dir_all(test_db_path);
+}
