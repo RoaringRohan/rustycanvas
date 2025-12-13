@@ -1,0 +1,36 @@
+[package]
+name = "rustycanvaswifi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core esp-rs stack (1.0 generation)
+esp-hal = { version = "1.0.0", features = ["esp32c6", "unstable", "log-04"] }
+esp-backtrace = { version = "0.18.0", features = ["esp32c6", "panic-handler", "println"] }
+esp-println = { version = "0.16.1", features = ["esp32c6", "log-04"] }
+esp-alloc = "0.9.0"
+
+# Scheduler needed by esp-radio (use the current esp-rtos line)
+esp-rtos = { version = "0.2.0", features = ["esp32c6", "esp-radio", "log-04"] }
+
+# Wi-Fi driver (esp-wifi got replaced by esp-radio)
+esp-radio = { version = "0.17.0", features = ["esp32c6", "wifi", "smoltcp", "unstable", "log-04"] }  # :contentReference[oaicite:2]{index=2}
+
+# Networking stack used by the DHCP example (git-only)
+blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e", default-features = false, features = ["dhcpv4", "tcp"] }  # :contentReference[oaicite:3]{index=3}
+
+embedded-io = { version = "0.6.1", default-features = false }
+
+# Smoltcp: use 0.12.x (the esp-hal example uses 0.12.0)
+smoltcp = { version = "0.12.0", default-features = false, features = [
+  "proto-ipv4",
+  "medium-ethernet",
+  "socket-dhcpv4",
+  "socket-tcp",
+  "socket-raw",
+] }
+
+# Your JSON parsing
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-json-core = "0.5"
+heapless = { version = "0.8", default-features = false, features = ["serde"] }
